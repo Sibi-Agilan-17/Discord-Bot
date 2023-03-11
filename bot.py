@@ -454,13 +454,6 @@ class Bot(commands.AutoShardedBot):
 
 	@tasks.loop(minutes=5)
 	async def _loop(self) -> None:
-		"""
-		To be implemented in the future
-		May not work as intended
-
-		:return: None
-		"""
-
 		await self.db.update_cache()
 
 		self.gateway_latency = round(self.latency * 1000, 2)
