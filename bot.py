@@ -14,7 +14,7 @@ from discord.utils import MISSING, setup_logging
 from discord.ext import commands, tasks
 from discord.ext.commands import errors
 from logging import INFO, WARNING, ERROR, CRITICAL
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 __all__ = (
 	'Bot',
@@ -65,7 +65,7 @@ class Bot(commands.AutoShardedBot):
 	_is_sleeping: bool = False  # Halts command processing when set to True
 
 	def __init__(self, **kwargs):
-		self.db = DB()
+		self.db = DB(**kwargs.get('db'))
 		self.COGS = []
 		self._is_sleeping = True
 		self.token = kwargs.get('token')
@@ -95,7 +95,8 @@ class Bot(commands.AutoShardedBot):
 			await self._ready.wait()
 
 		await self.change_presence()
-
+		
+		await self.log('------------------------------')
 		await self.log(f'Logged in as {self.user.name}#{self.user.discriminator}')
 		await self.log(f'discord.py API version: {discord.__version__}')
 		await self.log(f'Python version: {platform.python_version()}')
@@ -454,6 +455,13 @@ class Bot(commands.AutoShardedBot):
 
 	@tasks.loop(minutes=5)
 	async def _loop(self) -> None:
+		"""
+		To be implemented in the future
+		May not work as intended
+
+		:return: None
+		"""
+
 		await self.db.update_cache()
 
 		self.gateway_latency = round(self.latency * 1000, 2)
@@ -466,6 +474,122 @@ class Bot(commands.AutoShardedBot):
 	async def setup_hook(self) -> None:
 		await self.db.connect()
 		self._loop.start()
+
+
+class Cache:
+	def __init__(self, maxlen: int = 1000):
+		if maxlen <= 0:
+			raise ValueError('maxlen must be positive')
+
+		self.maxlen = maxlen
+		self._cache = {}
+
+	async def add_user(self, user_id: str, data) -> None:
+		if not self.is_user_present(user_id):
+			self._cache[user_id] = data
+		raise KeyError('User already present')
+
+	async def delete_user(self, user_id: str) -> bool:
+		if self.is_user_present(user_id):
+			self._cache.get(user_id)
+			return True
+		raise KeyError('User not present')
+
+	async def edit_user(self, user_id: str, data) -> None:
+		if self.is_user_present(user_id):
+			self._cache[user_id] = data
+			return
+		raise KeyError('User not present')
+
+	async def get_user(self, user_id: str) -> Union[dict, None]:
+		if self.is_user_present(user_id):
+			return self._cache[user_id]
+
+	async def is_user_present(self, user_id: str) -> bool:
+		return user_id in self._cache
+
+	async def update_cache(self, data):
+		self._cache = data
+
+
+class DatabaseManager:
+	path = './'
+	filename = ''
+	basic_data: dict = {}
+
+	_cache = True  # Set to False to stop cache
+
+	def __init__(self, **options):
+		self.path: Optional[str] = options.get('path')
+		self.filename: Optional[str] = options.get('filename')
+		self.cache = Cache()
+
+	async def get_all_data(self) -> dict:
+		with open('data.json', 'r') as f:
+			data = json.load(f)
+
+		if self._cache:
+			await self.cache.update_cache(data)
+
+		with open('data.json', 'w') as f:
+			json.dump(data, f)
+
+		return data
+
+	async def write_data(self, data) -> dict:
+		with open('data.json', 'r'):
+			pass
+
+		if self._cache:
+			await self.cache.update_cache(data)
+
+		with open('data.json', 'w') as f:
+			json.dump(data, f)
+
+		return data
+
+	async def add_user(self, user_id: str):
+		if self._cache:
+			await self.cache.add_user(user_id, self.basic_data)
+
+		data = await self.get_all_data()
+		data[user_id] = self.basic_data
+
+		await self.write_data(data)
+
+	async def add_user_raw(self, user_id: str):
+		try:
+			await self.add_user(user_id)
+		except KeyError:
+			pass
+
+	async def delete_user(self, user_id: str):
+		if self._cache:
+			await self.cache.delete_user(user_id)
+
+		data = await self.get_all_data()
+
+		await self.write_data(data.get(user_id))
+
+	async def delete_user_raw(self, user_id: str):
+		try:
+			await self.delete_user(user_id)
+		except KeyError:
+			pass
+
+	async def edit_user(self, user_id: str, **options):
+		data = await self.get_all_data()
+
+		for key, value in options.items():
+			data[user_id][key] = value
+
+		if self._cache:
+			await self.cache.edit_user(user_id, data[user_id])
+
+		await self.write_data(data)
+
+	async def refresh(self):  # Idk why you will call this
+		self.cache = await self.write_data(self.get_all_data())
 
 
 def pre_checks():
