@@ -95,7 +95,7 @@ class Bot(commands.AutoShardedBot):
 			await self._ready.wait()
 
 		await self.change_presence()
-		
+
 		await self.log('------------------------------')
 		await self.log(f'Logged in as {self.user.name}#{self.user.discriminator}')
 		await self.log(f'discord.py API version: {discord.__version__}')
@@ -245,6 +245,13 @@ class Bot(commands.AutoShardedBot):
 
 	@staticmethod
 	async def log(text: str, level=INFO) -> None:
+		"""
+		Override this method to setup your own logging
+		
+		:param text: Logging text 
+		:param level: Logging level, defaults to logging.INFO
+		:return: 
+		"""
 		if level == INFO:
 			return logging.info(text)
 
